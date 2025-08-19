@@ -208,11 +208,21 @@ jobs:
         for i in {1..60}; do
           if docker compose -f docker-compose.test.yml exec -T mysql mysqladmin ping -h localhost -u root -ptestpass123 --silent 2>/dev/null; then
             echo "MySQL is ready!"
+            # Additional wait to ensure MySQL is fully initialized
+            sleep 5
             break
           fi
           echo "Waiting... ($i/60)"
-          sleep 2
+          sleep 3
         done
+        
+        # Verify MySQL is truly ready by testing a simple query
+        echo "Verifying MySQL connection..."
+        docker compose -f docker-compose.test.yml exec -T mysql mysql -uroot -ptestpass123 -e "SELECT 1;" || {
+          echo "MySQL connection failed, checking logs..."
+          docker compose -f docker-compose.test.yml logs mysql
+          exit 1
+        }
 
         # Test basic functionality
         docker compose -f docker-compose.test.yml exec -T mysql mysql -uroot -ptestpass123 -e "
