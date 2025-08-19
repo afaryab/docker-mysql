@@ -22,9 +22,10 @@ BACKUP_CRON=0 2 * * *     # Daily at 2:00 AM
 USAGE_CRON=5 2 * * *      # Daily at 2:05 AM
 PRUNE_CRON=15 2 * * *     # Daily at 2:15 AM
 
-# Optional Backup Encryption
-BACKUP_ENCRYPT=aes-256-cbc
-BACKUP_ENCRYPT_PASSWORD=your-encryption-passphrase
+# Backup Encryption (REQUIRED for production)
+# Uncomment and set secure values for production environments:
+# BACKUP_ENCRYPT=aes-256-cbc
+# BACKUP_ENCRYPT_PASSWORD=YourVerySecure32CharEncryptionKey2025!
 
 # Auto-recovery setting
 AUTO_RECOVER=true

@@ -19,9 +19,10 @@ services:
       USAGE_CRON: ${USAGE_CRON:-5 3 * * *}      # Daily at 3:05 AM  
       PRUNE_CRON: ${PRUNE_CRON:-15 3 * * *}     # Daily at 3:15 AM
       
-      # Optional Encryption
-      BACKUP_ENCRYPT: ${BACKUP_ENCRYPT:-}                    # e.g., "aes-256-cbc"
-      BACKUP_ENCRYPT_PASSWORD: ${BACKUP_ENCRYPT_PASSWORD:-}  # encryption password
+      # Backup Encryption (DISABLED by default for development)
+      # PRODUCTION: Uncomment and set secure values below
+      # BACKUP_ENCRYPT: ${BACKUP_ENCRYPT:-aes-256-cbc}
+      # BACKUP_ENCRYPT_PASSWORD: ${BACKUP_ENCRYPT_PASSWORD}  # Use strong 32+ char password
       
       # Auto-recovery
       AUTO_RECOVER: ${AUTO_RECOVER:-true}
