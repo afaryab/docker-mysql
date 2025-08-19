@@ -157,20 +157,28 @@ OUT="${BACKUP_DIR}/usage/${STAMP_DATE}.json"
 
 # DB sizes by schema as JSON (MySQL 8+)
 DB_JSON="$(mysql --protocol=SOCKET --socket="${SOCKET}" -uroot -p"${MYSQL_ROOT_PASSWORD}" -N -B -e "
-  SELECT COALESCE(
-    JSON_OBJECTAGG(
+  SELECT CASE 
+    WHEN COUNT(*) = 0 THEN JSON_OBJECT()
+    ELSE JSON_OBJECTAGG(
       table_schema,
       JSON_OBJECT(
-        'size_bytes', CAST(SUM(data_length + index_length) AS UNSIGNED),
-        'table_count', COUNT(*),
-        'row_estimate', CAST(SUM(table_rows) AS UNSIGNED)
+        'size_bytes', size_bytes,
+        'table_count', table_count,
+        'row_estimate', row_estimate
       )
-    ),
-    JSON_OBJECT()
-  )
-  FROM information_schema.tables
-  WHERE table_schema NOT IN ('information_schema','performance_schema','mysql','sys');
-")"
+    )
+  END
+  FROM (
+    SELECT 
+      table_schema,
+      CAST(SUM(data_length + index_length) AS UNSIGNED) as size_bytes,
+      COUNT(*) as table_count,
+      CAST(SUM(table_rows) AS UNSIGNED) as row_estimate
+    FROM information_schema.tables
+    WHERE table_schema NOT IN ('information_schema','performance_schema','mysql','sys')
+    GROUP BY table_schema
+  ) as db_stats;
+" 2>/dev/null || echo '{}')"
 
 # Global status snippets
 UPTIME="$(mysql --protocol=SOCKET --socket="${SOCKET}" -uroot -p"${MYSQL_ROOT_PASSWORD}" -N -B -e "
