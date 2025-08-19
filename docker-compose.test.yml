@@ -1,0 +1,49 @@
+services:
+  mysql:
+    image: ahmadfaryabkokab/mysql8:test
+    build: .
+    container_name: mysql-backup-test
+    environment:
+      # MySQL Configuration
+      MYSQL_ROOT_PASSWORD: testpass123
+      MYSQL_DATABASE: testdb
+      
+      # Backup Configuration  
+      BACKUP_DIR: /backups
+      RETAIN_DAYS: 7
+      RETAIN_COUNT: 5
+      
+      # Test schedules (every 5 minutes for testing)
+      BACKUP_CRON: "*/5 * * * *"      # Every 5 minutes (for testing)
+      USAGE_CRON: "*/5 * * * *"       # Every 5 minutes (for testing)
+      PRUNE_CRON: "*/10 * * * *"      # Every 10 minutes (for testing)
+      
+      # Auto-recovery enabled
+      AUTO_RECOVER: "true"
+      
+      # Timezone
+      TZ: UTC
+      
+      # MySQL Dump Options
+      MYSQL_BACKUP_OPTS: "--single-transaction --routines --events --triggers --hex-blob --default-character-set=utf8mb4 --set-gtid-purged=OFF"
+    
+    ports:
+      - "3307:3306"
+    
+    volumes:
+      # Backup storage - using local directory for testing
+      - ./test-backups:/backups
+      
+      # Data volume - will be removed during auto-recovery testing
+      - mysql_test_data:/var/lib/mysql
+    
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ptestpass123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  mysql_test_data:
+    driver: local

@@ -1,0 +1,59 @@
+services:
+  mysql:
+    image: ahmadfaryabkokab/mysql8:latest
+    container_name: mysql-backup
+    environment:
+      # MySQL Configuration
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-your-secure-password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-}
+      MYSQL_USER: ${MYSQL_USER:-}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
+      
+      # Backup Configuration
+      BACKUP_DIR: /backups
+      RETAIN_DAYS: ${RETAIN_DAYS:-7}        # Keep backups for 7 days
+      RETAIN_COUNT: ${RETAIN_COUNT:-10}     # Keep latest 10 backups
+      
+      # Backup Schedules (cron format)
+      BACKUP_CRON: ${BACKUP_CRON:-0 3 * * *}    # Daily at 3:00 AM
+      USAGE_CRON: ${USAGE_CRON:-5 3 * * *}      # Daily at 3:05 AM  
+      PRUNE_CRON: ${PRUNE_CRON:-15 3 * * *}     # Daily at 3:15 AM
+      
+      # Optional Encryption
+      BACKUP_ENCRYPT: ${BACKUP_ENCRYPT:-}                    # e.g., "aes-256-cbc"
+      BACKUP_ENCRYPT_PASSWORD: ${BACKUP_ENCRYPT_PASSWORD:-}  # encryption password
+      
+      # Auto-recovery
+      AUTO_RECOVER: ${AUTO_RECOVER:-true}
+      
+      # Timezone
+      TZ: ${TZ:-UTC}
+      
+      # MySQL Dump Options
+      MYSQL_BACKUP_OPTS: "--single-transaction --routines --events --triggers --hex-blob --default-character-set=utf8mb4 --set-gtid-purged=OFF"
+    
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    
+    volumes:
+      # Persistent data - if this volume is deleted, auto-recovery will restore from latest backup
+      - mysql_data:/var/lib/mysql
+      
+      # Backup storage - mount to persistent location for production
+      - ./backups:/backups
+      
+      # Optional: custom MySQL configuration
+      # - ./mysql.cnf:/etc/mysql/conf.d/custom.cnf
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  mysql_data:
+    driver: local

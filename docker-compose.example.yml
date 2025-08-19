@@ -1,0 +1,33 @@
+# Example environment variables
+# Copy this file to .env and customize the values
+
+# Docker image
+IMAGE_NAME=ahmadfaryabkokab/mysql8:latest
+
+# MySQL Configuration
+MYSQL_ROOT_PASSWORD=your-super-secure-root-password
+MYSQL_DATABASE=myapp
+MYSQL_USER=appuser
+MYSQL_PASSWORD=secure-app-password
+
+# Port Configuration
+MYSQL_PORT=3306
+
+# Backup Retention
+RETAIN_DAYS=30        # Keep backups for 30 days
+RETAIN_COUNT=50       # Keep latest 50 backups
+
+# Backup Schedules (cron format)
+BACKUP_CRON=0 2 * * *     # Daily at 2:00 AM
+USAGE_CRON=5 2 * * *      # Daily at 2:05 AM
+PRUNE_CRON=15 2 * * *     # Daily at 2:15 AM
+
+# Optional Backup Encryption
+BACKUP_ENCRYPT=aes-256-cbc
+BACKUP_ENCRYPT_PASSWORD=your-encryption-passphrase
+
+# Auto-recovery setting
+AUTO_RECOVER=true
+
+# Timezone
+TZ=America/New_York
