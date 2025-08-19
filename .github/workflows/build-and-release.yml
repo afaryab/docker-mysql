@@ -22,9 +22,112 @@ env:
   IMAGE_NAME: ahmadfaryabkokab/mysql8
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Create test backup directory
+      run: mkdir -p test-backups
+
+    - name: Run comprehensive tests
+      run: |
+        # Build the test image
+        docker build -t ahmadfaryabkokab/mysql8:test .
+        
+        # Start services
+        docker compose -f docker-compose.test.yml up -d
+        
+        # Wait for MySQL to be ready
+        echo "Waiting for MySQL to start..."
+        for i in {1..60}; do
+          if docker compose -f docker-compose.test.yml exec -T mysql mysqladmin ping -h localhost -u root -ptestpass123 --silent 2>/dev/null; then
+            echo "MySQL is ready!"
+            # Additional wait to ensure MySQL is fully initialized
+            sleep 5
+            break
+          fi
+          echo "Waiting... ($i/60)"
+          sleep 3
+        done
+        
+        # Verify MySQL is truly ready by testing a simple query
+        echo "Verifying MySQL connection..."
+        docker compose -f docker-compose.test.yml exec -T mysql mysql -uroot -ptestpass123 -e "SELECT 1;" || {
+          echo "MySQL connection failed, checking logs..."
+          docker compose -f docker-compose.test.yml logs mysql
+          exit 1
+        }
+
+        # Test basic functionality
+        docker compose -f docker-compose.test.yml exec -T mysql mysql -uroot -ptestpass123 -e "
+          CREATE DATABASE IF NOT EXISTS testdb;
+          USE testdb; 
+          CREATE TABLE test (id INT PRIMARY KEY, name VARCHAR(50)); 
+          INSERT INTO test VALUES (1, 'test data');
+          SELECT * FROM test;
+        "
+        
+        # Test backup script
+        docker compose -f docker-compose.test.yml exec -T mysql /usr/local/bin/backup.sh
+        
+        # Verify backup was created
+        sleep 3
+        if ls test-backups/mysql-*.sql.gz 1> /dev/null 2>&1; then
+          echo "✅ Backup created successfully"
+        else
+          echo "❌ Backup creation failed"
+          ls -la test-backups/
+          exit 1
+        fi
+        
+        # Test usage report
+        docker compose -f docker-compose.test.yml exec -T mysql /usr/local/bin/usage_report.sh
+        
+        # Verify usage report was created
+        if ls test-backups/usage/*.json 1> /dev/null 2>&1; then
+          echo "✅ Usage report created successfully"
+        else
+          echo "❌ Usage report creation failed"
+          ls -la test-backups/usage/ 2>/dev/null || echo "Usage directory not found"
+          exit 1
+        fi
+        
+        # Test auto-recovery by restarting
+        echo "Testing auto-recovery..."
+        docker compose -f docker-compose.test.yml down
+        docker compose -f docker-compose.test.yml up -d
+        
+        # Wait for recovery
+        for i in {1..90}; do
+          if docker compose -f docker-compose.test.yml exec -T mysql mysqladmin ping -h localhost -u root -ptestpass123 --silent 2>/dev/null; then
+            echo "Auto-recovery completed!"
+            break
+          fi
+          echo "Waiting for recovery... ($i/90)"
+          sleep 3
+        done
+        
+        # Verify data exists after recovery
+        RESULT=$(docker compose -f docker-compose.test.yml exec -T mysql mysql -uroot -ptestpass123 -e "USE testdb; SELECT COUNT(*) FROM test;" 2>/dev/null | tail -n1 | tr -d '\r')
+        if [ "$RESULT" = "1" ]; then
+          echo "✅ Auto-recovery successful"
+        else
+          echo "❌ Auto-recovery failed. Expected 1, got: '$RESULT'"
+          docker compose -f docker-compose.test.yml logs mysql
+          exit 1
+        fi
+        
+        # Clean up
+        docker compose -f docker-compose.test.yml down -v
+        
+        echo "🎉 All tests passed successfully!"
+
   version:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    needs: [test]  # Only run after tests pass
     outputs:
       new_version: ${{ steps.calculate_version.outputs.new_version }}
       release_created: ${{ steps.calculate_version.outputs.release_created }}
@@ -118,8 +221,8 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    needs: [version]
-    if: always() && (needs.version.outputs.release_created == 'true' || github.event_name == 'pull_request' || github.ref != 'refs/heads/main')
+    needs: [test, version]  # Require both test and version to complete
+    if: always() && needs.test.result == 'success' && (needs.version.outputs.release_created == 'true' || github.event_name == 'pull_request' || github.ref != 'refs/heads/main')
     permissions:
       contents: read
       packages: write
@@ -176,115 +279,6 @@ jobs:
         subject-digest: ${{ steps.build.outputs.digest }}
         push-to-registry: true
       continue-on-error: true
-
-  test:
-    runs-on: ubuntu-latest
-    needs: [version, build]
-    if: always() && needs.build.result == 'success' && (needs.version.outputs.release_created == 'true' || github.event_name == 'pull_request')
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Set up test environment
-      run: |
-        mkdir -p test-backups
-
-    - name: Build and test with Docker Compose
-      run: |
-        # Build the test image with version tag if available
-        if [ "${{ needs.version.outputs.new_version }}" != "" ]; then
-          docker build -t ahmadfaryabkokab/mysql8:${{ needs.version.outputs.new_version }} .
-          docker tag ahmadfaryabkokab/mysql8:${{ needs.version.outputs.new_version }} ahmadfaryabkokab/mysql8:test
-        else
-          docker build -t ahmadfaryabkokab/mysql8:test .
-        fi
-        
-        # Start services
-        docker compose -f docker-compose.test.yml up -d
-        
-        # Wait for MySQL to be ready
-        echo "Waiting for MySQL to start..."
-        for i in {1..60}; do
-          if docker compose -f docker-compose.test.yml exec -T mysql mysqladmin ping -h localhost -u root -ptestpass123 --silent 2>/dev/null; then
-            echo "MySQL is ready!"
-            # Additional wait to ensure MySQL is fully initialized
-            sleep 5
-            break
-          fi
-          echo "Waiting... ($i/60)"
-          sleep 3
-        done
-        
-        # Verify MySQL is truly ready by testing a simple query
-        echo "Verifying MySQL connection..."
-        docker compose -f docker-compose.test.yml exec -T mysql mysql -uroot -ptestpass123 -e "SELECT 1;" || {
-          echo "MySQL connection failed, checking logs..."
-          docker compose -f docker-compose.test.yml logs mysql
-          exit 1
-        }
-
-        # Test basic functionality
-        docker compose -f docker-compose.test.yml exec -T mysql mysql -uroot -ptestpass123 -e "
-          CREATE DATABASE IF NOT EXISTS testdb;
-          USE testdb; 
-          CREATE TABLE test (id INT PRIMARY KEY, name VARCHAR(50)); 
-          INSERT INTO test VALUES (1, 'test data');
-          SELECT * FROM test;
-        "
-        
-        # Test backup script
-        docker compose -f docker-compose.test.yml exec -T mysql /usr/local/bin/backup.sh
-        
-        # Verify backup was created
-        sleep 3
-        if ls test-backups/mysql-*.sql.gz 1> /dev/null 2>&1; then
-          echo "✅ Backup created successfully"
-        else
-          echo "❌ Backup creation failed"
-          ls -la test-backups/
-          exit 1
-        fi
-        
-        # Test usage report
-        docker compose -f docker-compose.test.yml exec -T mysql /usr/local/bin/usage_report.sh
-        
-        # Verify usage report was created
-        if ls test-backups/usage/*.json 1> /dev/null 2>&1; then
-          echo "✅ Usage report created successfully"
-        else
-          echo "❌ Usage report creation failed"
-          ls -la test-backups/usage/ 2>/dev/null || echo "Usage directory not found"
-          exit 1
-        fi
-
-        # Test auto-recovery by restarting
-        echo "Testing auto-recovery..."
-        docker compose -f docker-compose.test.yml down
-        docker compose -f docker-compose.test.yml up -d
-        
-        # Wait for recovery
-        for i in {1..90}; do
-          if docker compose -f docker-compose.test.yml exec -T mysql mysqladmin ping -h localhost -u root -ptestpass123 --silent 2>/dev/null; then
-            echo "Auto-recovery completed!"
-            break
-          fi
-          echo "Waiting for recovery... ($i/90)"
-          sleep 3
-        done
-        
-        # Verify data exists after recovery
-        RESULT=$(docker compose -f docker-compose.test.yml exec -T mysql mysql -uroot -ptestpass123 -e "USE testdb; SELECT COUNT(*) FROM test;" 2>/dev/null | tail -n1 | tr -d '\r')
-        if [ "$RESULT" = "1" ]; then
-          echo "✅ Auto-recovery successful"
-        else
-          echo "❌ Auto-recovery failed. Expected 1, got: '$RESULT'"
-          docker compose -f docker-compose.test.yml logs mysql
-          exit 1
-        fi
-
-        # Clean up
-        docker compose -f docker-compose.test.yml down -v
 
   release:
     if: always() && needs.version.outputs.release_created == 'true' && needs.test.result == 'success'
@@ -369,6 +363,7 @@ jobs:
   build-dev:
     if: github.event_name == 'push' && github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
+    needs: [test]  # Require tests to pass before dev build
     permissions:
       contents: read
       packages: write
