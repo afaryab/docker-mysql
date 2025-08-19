@@ -201,12 +201,12 @@ jobs:
         fi
         
         # Start services
-        docker-compose -f docker-compose.test.yml up -d
+        docker compose -f docker-compose.test.yml up -d
         
         # Wait for MySQL to be ready
         echo "Waiting for MySQL to start..."
         for i in {1..60}; do
-          if docker-compose -f docker-compose.test.yml exec -T mysql mysqladmin ping -h localhost -u root -ptestpass123 --silent 2>/dev/null; then
+          if docker compose -f docker-compose.test.yml exec -T mysql mysqladmin ping -h localhost -u root -ptestpass123 --silent 2>/dev/null; then
             echo "MySQL is ready!"
             break
           fi
@@ -215,7 +215,7 @@ jobs:
         done
 
         # Test basic functionality
-        docker-compose -f docker-compose.test.yml exec -T mysql mysql -uroot -ptestpass123 -e "
+        docker compose -f docker-compose.test.yml exec -T mysql mysql -uroot -ptestpass123 -e "
           CREATE DATABASE IF NOT EXISTS testdb;
           USE testdb; 
           CREATE TABLE test (id INT PRIMARY KEY, name VARCHAR(50)); 
@@ -224,7 +224,7 @@ jobs:
         "
         
         # Test backup script
-        docker-compose -f docker-compose.test.yml exec -T mysql /usr/local/bin/backup.sh
+        docker compose -f docker-compose.test.yml exec -T mysql /usr/local/bin/backup.sh
         
         # Verify backup was created
         sleep 3
@@ -237,7 +237,7 @@ jobs:
         fi
         
         # Test usage report
-        docker-compose -f docker-compose.test.yml exec -T mysql /usr/local/bin/usage_report.sh
+        docker compose -f docker-compose.test.yml exec -T mysql /usr/local/bin/usage_report.sh
         
         # Verify usage report was created
         if ls test-backups/usage/*.json 1> /dev/null 2>&1; then
@@ -250,12 +250,12 @@ jobs:
 
         # Test auto-recovery by restarting
         echo "Testing auto-recovery..."
-        docker-compose -f docker-compose.test.yml down
-        docker-compose -f docker-compose.test.yml up -d
+        docker compose -f docker-compose.test.yml down
+        docker compose -f docker-compose.test.yml up -d
         
         # Wait for recovery
         for i in {1..90}; do
-          if docker-compose -f docker-compose.test.yml exec -T mysql mysqladmin ping -h localhost -u root -ptestpass123 --silent 2>/dev/null; then
+          if docker compose -f docker-compose.test.yml exec -T mysql mysqladmin ping -h localhost -u root -ptestpass123 --silent 2>/dev/null; then
             echo "Auto-recovery completed!"
             break
           fi
@@ -264,17 +264,17 @@ jobs:
         done
         
         # Verify data exists after recovery
-        RESULT=$(docker-compose -f docker-compose.test.yml exec -T mysql mysql -uroot -ptestpass123 -e "USE testdb; SELECT COUNT(*) FROM test;" 2>/dev/null | tail -n1 | tr -d '\r')
+        RESULT=$(docker compose -f docker-compose.test.yml exec -T mysql mysql -uroot -ptestpass123 -e "USE testdb; SELECT COUNT(*) FROM test;" 2>/dev/null | tail -n1 | tr -d '\r')
         if [ "$RESULT" = "1" ]; then
           echo "✅ Auto-recovery successful"
         else
           echo "❌ Auto-recovery failed. Expected 1, got: '$RESULT'"
-          docker-compose -f docker-compose.test.yml logs mysql
+          docker compose -f docker-compose.test.yml logs mysql
           exit 1
         fi
 
         # Clean up
-        docker-compose -f docker-compose.test.yml down -v
+        docker compose -f docker-compose.test.yml down -v
 
   release:
     if: always() && needs.version.outputs.release_created == 'true' && needs.test.result == 'success'
